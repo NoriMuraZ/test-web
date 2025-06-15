@@ -1,0 +1,384 @@
+@startuml マスターデータメンテナンスシステム構成図
+!define RECTANGLE class
+
+title マスターデータメンテナンスシステム - システム構成図
+
+' スタイル定義
+skinparam backgroundColor #FAFAFA
+skinparam componentStyle rectangle
+skinparam rectangleBorderColor #333333
+skinparam rectangleBackgroundColor #E8F4FD
+skinparam arrowColor #2563EB
+skinparam arrowFontColor #1E40AF
+
+' ユーザー
+actor "システム管理者" as admin
+actor "マネージャー" as manager
+actor "オペレーター" as operator
+actor "閲覧者" as viewer
+
+' プレゼンテーション層
+package "プレゼンテーション層 (Port: 8080)" as presentation {
+component "React Frontend" as react {
+[ダッシュボード]
+[商品管理画面]
+[顧客管理画面]
+[カテゴリ管理画面]
+[ユーザー管理画面]
+}
+component "Nginx" as nginx
+}
+
+' アプリケーション層
+package "アプリケーション層 (Port: 3000)" as application {
+component "Node.js + Express" as nodejs {
+[認証API]
+[商品API]
+[顧客API]
+[カテゴリAPI]
+[ユーザーAPI]
+}
+
+component "ミドルウェア" as middleware {
+[JWT認証]
+[レート制限]
+[CORS保護]
+[セキュリティヘッダー]
+[ログ管理]
+}
+}
+
+' データ層
+package "データ層" as data {
+database "PostgreSQL\n(Port: 5432)" as postgres {
+[products テーブル]
+[customers テーブル]
+[categories テーブル]
+[users テーブル]
+}
+
+database "Redis\n(Port: 6379)" as redis {
+[セッション管理]
+[レート制限カウンター]
+[キャッシュデータ]
+}
+}
+
+' 外部システム
+cloud "外部システム" as external {
+[監視システム]
+[ログ集約システム]
+[バックアップシステム]
+}
+
+' コンテナ構成
+package "Docker/Podman コンテナ" as containers {
+node "frontend-container" as fc {
+component "React App + Nginx" as frontend_app
+}
+
+node "api-container" as ac {
+component "Node.js API Server" as api_server
+}
+
+node "database-container" as dc {
+component "PostgreSQL Server" as db_server
+}
+
+node "redis-container" as rc {
+component "Redis Server" as redis_server
+}
+}
+
+' ネットワーク
+package "Docker Network: master-data-network" as network {
+note "Subnet: 172.21.0.0/16" as subnet
+}
+
+' 関係性の定義
+admin --> react : "管理操作"
+manager --> react : "管理・閲覧"
+operator --> react : "基本操作"
+viewer --> react : "閲覧のみ"
+
+react --> nginx : "静的ファイル配信"
+nginx --> nodejs : "API リクエスト\n(HTTP/HTTPS)"
+
+nodejs --> middleware : "リクエスト処理"
+middleware --> postgres : "データ操作\n(SQL)"
+middleware --> redis : "セッション・キャッシュ\n(Redis Protocol)"
+
+nodejs --> external : "ログ出力・監視"
+
+' コンテナ間の関係
+frontend_app --> api_server : "API 呼び出し"
+api_server --> db_server : "データベース接続"
+api_server --> redis_server : "キャッシュ・セッション"
+
+fc --> network
+ac --> network
+dc --> network
+rc --> network
+
+' データフロー
+note right of nodejs
+データフロー
+
+ユーザー認証 (JWT)
+レート制限チェック (Redis)
+リクエストバリデーション
+ビジネスロジック実行
+データベースアクセス
+レスポンス返却 end note
+note left of postgres
+データベーススキーマ
+• products (商品マスター)
+• customers (顧客マスター)
+• categories (カテゴリマスター)
+• users (ユーザーマスター)
+
+セキュリティ機能
+• パスワードハッシュ化
+• SQL インジェクション対策
+• トランザクション管理
+end note
+
+note right of redis
+Redis 用途
+• セッション管理
+• レート制限カウンター
+• API レスポンスキャッシュ
+• 一時データ保存
+end note
+
+' セキュリティ境界
+rectangle "セキュリティ境界" as security {
+note "• HTTPS/TLS暗号化\n• JWT認証\n• CORS保護\n• レート制限\n• セキュリティヘッダー" as security_note
+}
+
+@enduml
+
+@startuml デプロイメント構成図
+!define RECTANGLE class
+
+title マスターデータメンテナンスシステム - デプロイメント構成図
+
+' スタイル定義
+skinparam backgroundColor #FAFAFA
+skinparam nodeBackgroundColor #E8F4FD
+skinparam componentBackgroundColor #FFFFFF
+skinparam databaseBackgroundColor #FEF3C7
+skinparam cloudBackgroundColor #ECFDF5
+
+' 物理環境
+node "開発環境" as dev_env {
+node "Docker/Podman Host" as dev_host {
+component "frontend:8080" as dev_frontend
+component "api:3000" as dev_api
+database "postgres:5432" as dev_db
+database "redis:6379" as dev_redis
+}
+}
+
+node "本番環境" as prod_env {
+cloud "OpenShift/Kubernetes" as openshift {
+node "Frontend Pod" as frontend_pod {
+component "React App" as prod_frontend
+component "Nginx" as prod_nginx
+}
+
+
+node "API Pod (複数)" as api_pod {
+  component "Node.js API" as prod_api
+}
+
+node "Database Pod" as db_pod {
+  database "PostgreSQL" as prod_db
+}
+
+node "Redis Pod" as redis_pod {
+  database "Redis Cluster" as prod_redis
+}
+}
+
+component "Load Balancer" as lb
+component "Ingress Controller" as ingress
+}
+
+' 外部サービス
+cloud "外部サービス" as external_services {
+component "監視サービス" as monitoring
+component "ログ管理" as logging
+component "バックアップ" as backup
+component "CI/CD Pipeline" as cicd
+}
+
+' ネットワーク構成
+package "ネットワーク構成" as network_config {
+rectangle "開発ネットワーク\n172.21.0.0/16" as dev_network
+rectangle "本番ネットワーク\n10.0.0.0/16" as prod_network
+rectangle "外部ネットワーク\nInternet" as external_network
+}
+
+' 関係性
+dev_frontend --> dev_api : "API 呼び出し"
+dev_api --> dev_db : "データベース接続"
+dev_api --> dev_redis : "キャッシュ・セッション"
+
+external_network --> lb : "HTTPS Traffic"
+lb --> ingress : "Load Balancing"
+ingress --> frontend_pod : "Web Traffic"
+frontend_pod --> api_pod : "API Requests"
+api_pod --> db_pod : "Database Queries"
+api_pod --> redis_pod : "Cache/Session"
+
+prod_env --> monitoring : "メトリクス"
+prod_env --> logging : "ログ"
+prod_env --> backup : "データバックアップ"
+cicd --> prod_env : "デプロイメント"
+
+' 環境間の関係
+dev_env --> cicd : "コード Push"
+cicd --> prod_env : "自動デプロイ"
+
+note right of dev_env
+開発環境
+• ローカル開発
+• Docker/Podman Compose
+• ホットリロード
+• デバッグモード
+end note
+
+note right of prod_env
+本番環境
+• 高可用性構成
+• 自動スケーリング
+• ロードバランシング
+• 監視・アラート
+end note
+
+note bottom of external_services
+運用サービス
+• Prometheus/Grafana (監視)
+• ELK Stack (ログ)
+• 定期バックアップ
+• GitLab CI/CD
+end note
+
+@enduml
+
+@startuml データフロー図
+title マスターデータメンテナンスシステム - データフロー図
+
+' スタイル定義
+skinparam backgroundColor #FAFAFA
+skinparam actorBackgroundColor #E8F4FD
+skinparam componentBackgroundColor #FFFFFF
+skinparam databaseBackgroundColor #FEF3C7
+
+' アクター
+actor "ユーザー" as user
+
+' プロセス
+rectangle "1. 認証プロセス" as auth_process {
+component "ログイン画面" as login
+component "JWT認証" as jwt
+component "セッション管理" as session
+}
+
+rectangle "2. データ操作プロセス" as data_process {
+component "データ入力画面" as input
+component "バリデーション" as validation
+component "ビジネスロジック" as business
+component "データ永続化" as persistence
+}
+
+rectangle "3. 検索・表示プロセス" as search_process {
+component "検索画面" as search
+component "フィルタリング" as filter
+component "ソート・ページング" as sort
+component "データ表示" as display
+}
+
+' データストア
+database "PostgreSQL" as postgres {
+[users テーブル]
+[products テーブル]
+[customers テーブル]
+[categories テーブル]
+}
+
+database "Redis" as redis {
+[セッションデータ]
+[キャッシュデータ]
+[レート制限データ]
+}
+
+' データフロー
+user --> login : "1. ログイン要求"
+login --> jwt : "2. 認証情報"
+jwt --> postgres : "3. ユーザー検証"
+postgres --> jwt : "4. ユーザー情報"
+jwt --> session : "5. JWTトークン"
+session --> redis : "6. セッション保存"
+redis --> session : "7. セッション確認"
+session --> user : "8. 認証完了"
+
+user --> input : "9. データ入力"
+input --> validation : "10. 入力データ"
+validation --> business : "11. 検証済みデータ"
+business --> persistence : "12. 処理済みデータ"
+persistence --> postgres : "13. データ保存"
+postgres --> persistence : "14. 保存結果"
+persistence --> user : "15. 処理完了"
+
+user --> search : "16. 検索要求"
+search --> filter : "17. 検索条件"
+filter --> redis : "18. キャッシュ確認"
+redis --> filter : "19. キャッシュデータ"
+filter --> postgres : "20. データ検索"
+postgres --> sort : "21. 検索結果"
+sort --> display : "22. 整列済みデータ"
+display --> redis : "23. 結果キャッシュ"
+display --> user : "24. 表示データ"
+
+' セキュリティフロー
+rectangle "セキュリティチェック" as security {
+component "レート制限" as rate_limit
+component "CORS検証" as cors
+component "入力サニタイズ" as sanitize
+}
+
+user --> rate_limit : "全リクエスト"
+rate_limit --> redis : "制限カウンター"
+rate_limit --> cors : "制限内リクエスト"
+cors --> sanitize : "許可されたリクエスト"
+sanitize --> auth_process : "安全なリクエスト"
+sanitize --> data_process : "安全なリクエスト"
+sanitize --> search_process : "安全なリクエスト"
+
+note right of postgres
+データ整合性
+• トランザクション管理
+• 外部キー制約
+• 一意性制約
+• データ型制約
+end note
+
+note right of redis
+パフォーマンス最適化
+• セッション高速アクセス
+• 検索結果キャッシュ
+• レート制限高速判定
+• 一時データ保存
+end note
+
+note bottom of security
+セキュリティ対策
+• SQL インジェクション防止
+• XSS攻撃防止
+• CSRF攻撃防止
+• 不正アクセス防止
+end note
+
+@enduml
